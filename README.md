@@ -50,10 +50,14 @@ every ad in one bucket with a reason (`search/scan.csv`). Mechanical filters
 decision land in `review`: `bin/jobscan --show review`. It also lists tracked
 jobs whose feed deadline moved or whose posting disappeared.
 
-A daily Claude cloud routine runs the same scan from the GitHub copy at 7am
-Eastern and adds new `review` ads, with a suggested call, to the "New listings"
-tab of the shortlist doc. The routine only reads the repo; decisions are
-copied back into `decisions.csv` and `tracker.csv` in a local session.
+A daily Claude cloud routine ("Job listing monitor",
+https://claude.ai/code/routines/trig_016eGRQi7SHHiBPTcCjiT8xj) runs the same
+scan from the GitHub copy at 7am Eastern and sends a push notification listing
+new `review` ads with a suggested call, plus tracked-job changes. It only reads
+the repo. In a local session, "review new ads" reruns the scan, records the
+calls in `decisions.csv` (and `tracker.csv` for Apply), and pushes, so the next
+run doesn't report the same ads. Its cloud environment ("Default") must allow
+mathjobs.org and academicjobsonline.org.
 
 ## Building
 
