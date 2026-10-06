@@ -10,6 +10,7 @@
 | `applications/<institution-position-year>/` | Only for jobs where something is tailored. |
 | `applications/_template/` | What `bin/new-application` copies. |
 | `references/recommenders.md` | Letter writers and which jobs each was asked for. |
+| `search/` | Job search: `criteria.md`, `research-profile.md`, screening `decisions.csv`, `deep-dive.md` notes, latest `scan.csv`. |
 | `bin/` | Small helper scripts (below). |
 
 ## Tracker columns
@@ -40,6 +41,20 @@ they sort correctly.
 4. See what's coming up: `bin/deadlines` (open jobs, sorted by deadline, with
    days left), or `bin/deadlines --all`.
 
+## Finding jobs
+
+`bin/jobscan` downloads the MathJobs and AcademicJobsOnline feeds and puts
+every ad in one bucket with a reason (`search/scan.csv`). Mechanical filters
+(country, tenure-track, expired, not math) run in the script; judgement calls
+(field, elite, pay) are recorded per ad in `search/decisions.csv`. Ads with no
+decision land in `review`: `bin/jobscan --show review`. It also lists tracked
+jobs whose feed deadline moved or whose posting disappeared.
+
+A daily Claude cloud routine runs the same scan from the GitHub copy at 7am
+Eastern and adds new `review` ads, with a suggested call, to the "New listings"
+tab of the shortlist doc. The routine only reads the repo; decisions are
+copied back into `decisions.csv` and `tracker.csv` in a local session.
+
 ## Building
 
 Open the folder in VS Code and choose **Reopen in Container**. LaTeX
@@ -49,5 +64,7 @@ Generated PDFs aren't committed, except those in `submitted/` folders.
 
 ## Git
 
-Local repository only (no GitHub remote). Commit after each submission so the
-history records what went out when.
+Private GitHub repository (pushed so the cloud routine can read it). Commit
+after each submission so the history records what went out when, and push
+after changing `decisions.csv` or `tracker.csv` so the routine sees them.
+Confidential letters (`references/letters/`) are gitignored and never pushed.

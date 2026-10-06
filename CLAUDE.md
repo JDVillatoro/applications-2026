@@ -20,5 +20,11 @@ layout, tracker columns and workflow.
   can't compile, so ask Joel to build and paste errors. The devcontainer installs
   the Claude Code VS Code extension, and a session started there runs inside the
   container and can run `latexmk` itself. `bin/deadlines` runs in WSL directly.
-- Local git only: no GitHub remote. Commit with
-  `git -c user.name="Joel Villatoro" -c user.email=41701387+JDVillatoro@users.noreply.github.com`.
+- Private GitHub remote (`origin`), read by the daily job-monitor cloud routine.
+  Commit with
+  `git -c user.name="Joel Villatoro" -c user.email=41701387+JDVillatoro@users.noreply.github.com`
+  and push after changing `search/decisions.csv` or `tracker.csv`. Never commit
+  anything under `references/letters/`.
+- Job screening: `bin/jobscan` + `search/decisions.csv` (see README "Finding
+  jobs"). Every ad gets a bucket and a written reason; missing data never
+  excludes an ad.

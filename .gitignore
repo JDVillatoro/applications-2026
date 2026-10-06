@@ -27,3 +27,7 @@ desktop.ini
 # Placeholders created by the Claude Code sandbox
 .claude/
 .mcp.json
+
+# Raw job-feed downloads (bin/jobscan cache)
+search/raw/
+search/scan.csv

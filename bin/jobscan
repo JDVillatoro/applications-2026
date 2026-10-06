@@ -1,0 +1,210 @@
+#!/usr/bin/env python3
+"""Screen job ads from MathJobs and AcademicJobsOnline.
+
+    bin/jobscan                 fetch feeds, write search/scan.csv, print summary
+    bin/jobscan --offline       reuse today's cached feeds in search/raw/
+    bin/jobscan --show BUCKET   also list the ads in BUCKET (e.g. review, keep)
+
+Every ad ends up in exactly one bucket with a reason; nothing is dropped.
+Mechanical buckets (decided here, from structured feed fields):
+    out-country    not US/Canada
+    out-type       not a tenure-track position (by the feed's type field)
+    out-not-math   AJO ad with no mention of mathematics anywhere
+    past-deadline  stated deadline has passed (many still accept applications)
+    duplicate      same institution and title already seen on MathJobs
+Judgement buckets come from search/decisions.csv (keep, maybe, skip, out-field,
+out-elite, out-pay, out-stale, out-other). A remaining ad with no decision
+is put in `review`. Missing deadline or salary never excludes an ad.
+"""
+import csv
+import gzip
+import html
+import json
+import re
+import sys
+import urllib.request
+from collections import Counter
+from datetime import date
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+SEARCH = ROOT / "search"
+RAW = SEARCH / "raw"
+DECISIONS = SEARCH / "decisions.csv"
+OUT = SEARCH / "scan.csv"
+
+FEEDS = {
+    "mathjobs": "https://www.mathjobs.org/jobs/public_job_boards?limit=5000&page=1",
+    "ajo": "https://academicjobsonline.org/ajo/public_job_boards?limit=5000&page=1",
+}
+COUNTRIES = {"US", "CA"}
+TT_TYPES = {"Tenured/Tenure-track faculty", "Open Rank"}
+# Types whose ads might still be tenure-track; decided by the ad's wording.
+AMBIGUOUS_TYPES = {None, "", "Other", "Teaching stream faculty",
+                   "Non-regular rank faculty", "Non tenure-track faculty"}
+JUDGEMENT_BUCKETS = {"keep", "maybe", "skip", "out-field", "out-elite", "out-pay",
+                     "out-stale", "out-other"}
+ELITE = ["Harvard", "Massachusetts Institute of Technology", "Princeton",
+         "Stanford", "California Institute of Technology", "Berkeley",
+         "University of Chicago", "Columbia University", "Yale",
+         "New York University"]
+
+
+def text(s):
+    s = re.sub(r"<[^>]+>", " ", s or "")
+    return re.sub(r"\s+", " ", html.unescape(s)).strip()
+
+
+def load_feed(name, offline):
+    RAW.mkdir(parents=True, exist_ok=True)
+    path = RAW / f"{name}-{date.today().isoformat()}.json"
+    if not offline:
+        req = urllib.request.Request(FEEDS[name], headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=120) as r:
+            body = r.read()
+        if body[:2] == b"\x1f\x8b":   # server gzips even when not asked
+            body = gzip.decompress(body)
+        path.write_bytes(body)
+    data = json.loads(path.read_text())
+    if int(data["count"]) != int(data["total_count"]):
+        sys.exit(f"{name}: feed returned {data['count']} of {data['total_count']} ads; "
+                 "raise the limit")
+    return data["results"]
+
+
+def real_date(s):
+    """ISO date from a feed field, or None for empty/0000-00-00/unparseable."""
+    s = (s or "")[:10]
+    try:
+        return date.fromisoformat(s)
+    except ValueError:
+        return None
+
+
+def mentions_tenure_track(blob):
+    return bool(re.search(r"(?<!non-)(?<!non )tenure[- ]track", blob, re.I))
+
+
+def salary_hint(ad):
+    amounts = re.findall(r"\$\s?\d[\d,]*(?:\.\d+)?\s?[kK]?", ad["salary"] + " " + ad["_text"])
+    return " ".join(dict.fromkeys(a.replace(" ", "") for a in amounts))[:80]
+
+
+def norm(s):
+    return re.sub(r"[^a-z0-9]", "", (s or "").lower())
+
+
+def classify(ad, src, today, seen):
+    blob = " ".join([ad["name"] or "", ad["_text"]])
+    if ad["country"] not in COUNTRIES:
+        return "out-country", ad["country"] or "no country"
+    t = ad["type"]
+    if t not in TT_TYPES:
+        if t in AMBIGUOUS_TYPES and mentions_tenure_track(blob):
+            pass
+        else:
+            return "out-type", f"type={t}"
+    if src == "ajo":
+        fields = " ".join([ad["subject"] or "", ad["name"] or "", ad["univ"] or "",
+                           ad["unit_name"] or "", ad["_text"]])
+        if not re.search(r"mathemat", fields, re.I):
+            return "out-not-math", f"subject={ad['subject'] or '-'}"
+    key = (norm(ad["univ"]), norm(ad["name"]))
+    if src != "mathjobs" and key in seen:
+        return "duplicate", f"same as {seen[key]}"
+    seen.setdefault(key, f"{src}:{ad['id']}")
+    dl = real_date(ad["deadline_raw"])
+    if dl and dl < today:
+        return "past-deadline", f"deadline {dl}"
+    return None, ""
+
+
+def check_tracker(by_url):
+    """Open tracker rows whose posting vanished or whose feed deadline moved."""
+    out = []
+    with open(ROOT / "tracker.csv", newline="") as f:
+        for t in csv.DictReader(f):
+            if t["status"] in ("rejected", "withdrawn", "closed"):
+                continue
+            link = t["link"].rstrip("/")
+            if "mathjobs.org" not in link and "academicjobsonline.org" not in link:
+                continue
+            ad = by_url.get(link)
+            name = f"{t['institution']} ({t['position']})"
+            if ad is None:
+                out.append(f"  GONE      {name}: posting no longer in the feed  {link}")
+            elif ad["deadline"] != "none" and t["deadline"] and ad["deadline"] != t["deadline"]:
+                out.append(f"  DEADLINE  {name}: tracker {t['deadline']}, feed {ad['deadline']}")
+    return out
+
+
+def main():
+    offline = "--offline" in sys.argv
+    show = sys.argv[sys.argv.index("--show") + 1] if "--show" in sys.argv else None
+    today = date.today()
+
+    decisions = {}
+    if DECISIONS.exists():
+        with open(DECISIONS, newline="") as f:
+            for row in csv.DictReader(f):
+                if row["bucket"] not in JUDGEMENT_BUCKETS:
+                    sys.exit(f"decisions.csv: unknown bucket {row['bucket']!r} for {row['key']}")
+                decisions[row["key"]] = row
+
+    rows, seen, total = [], {}, 0
+    for src in ("mathjobs", "ajo"):   # MathJobs first, so AJO copies are the duplicates
+        ads = load_feed(src, offline)
+        total += len(ads)
+        for ad in ads:
+            ad["_text"] = text(ad["description"]) + " " + text(ad["qualifications"])
+            ad["salary"] = ad["salary"] or ""
+            key = f"{src}:{ad['id']}"
+            bucket, reason = classify(ad, src, today, seen)
+            if bucket is None:
+                d = decisions.get(key)
+                bucket, reason = (d["bucket"], d["reason"]) if d else ("review", "")
+            elite = next((e for e in ELITE if e.lower() in (ad["univ"] or "").lower()), "")
+            rows.append({
+                "key": key, "bucket": bucket, "reason": reason,
+                "institution": ad["univ"], "position": ad["name"],
+                "place": ", ".join(x for x in (ad["city"], ad["state"], ad["country"]) if x),
+                "type": ad["type"] or "", "subject": ad["subject"] or "",
+                "deadline": str(real_date(ad["deadline_raw"]) or "none"),
+                "posted": ad["open_date_raw"] or "",
+                "salary": ad["salary"], "salary_hint": salary_hint(ad),
+                "elite_flag": elite, "url": ad["url"],
+            })
+
+    assert len(rows) == total, "every ad must be in exactly one row"
+    unused = set(decisions) - {r["key"] for r in rows}
+
+    rows.sort(key=lambda r: (r["bucket"], r["deadline"], r["institution"]))
+    with open(OUT, "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=list(rows[0]), lineterminator="\n")
+        w.writeheader()
+        w.writerows(rows)
+
+    counts = Counter(r["bucket"] for r in rows)
+    print(f"{total} ads -> {OUT.relative_to(ROOT)}")
+    for b, n in sorted(counts.items()):
+        print(f"  {b:<14}{n:>5}")
+    print(f"  {'total':<14}{sum(counts.values()):>5}")
+    if unused:
+        print(f"\n{len(unused)} decisions match no current ad (expired or removed): "
+              + ", ".join(sorted(unused)))
+    tracker_changes = check_tracker({r["url"]: r for r in rows})
+    if tracker_changes:
+        print(f"\n--- tracked jobs that changed ({len(tracker_changes)}) ---")
+        for line in tracker_changes:
+            print(line)
+    if show:
+        print(f"\n--- {show} ---")
+        for r in rows:
+            if r["bucket"] == show:
+                print(f"{r['key']:<16}{r['deadline']:<11}{r['institution'][:40]:<41}"
+                      f"{r['position'][:55]:<56}{r['place'][:25]:<26}{r['salary_hint'][:30]}"
+                      f"{'  [ELITE]' if r['elite_flag'] else ''}  {r['reason']}")
+
+
+if __name__ == "__main__":
+    main()
