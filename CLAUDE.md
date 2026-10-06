@@ -16,7 +16,9 @@ layout, tracker columns and workflow.
 - `submitted/` PDFs are frozen records of what was sent: never edit or rebuild
   them.
 - Not part of the notes toolkit (pure LaTeX, no pandoc). Builds need the dev
-  container (`jdvillatoro/latex-devenv`); Claude can't compile, so ask Joel to
-  build and paste errors. `bin/deadlines` runs in WSL directly.
+  container (`jdvillatoro/latex-devenv`). A Claude session started from WSL
+  can't compile, so ask Joel to build and paste errors. The devcontainer installs
+  the Claude Code VS Code extension, and a session started there runs inside the
+  container and can run `latexmk` itself. `bin/deadlines` runs in WSL directly.
 - Local git only: no GitHub remote. Commit with
   `git -c user.name="Joel Villatoro" -c user.email=41701387+JDVillatoro@users.noreply.github.com`.
