@@ -1,0 +1,19 @@
+#!/bin/sh
+# Start a tailored application folder:  bin/new-application washu-asst-prof-2026
+# Copies the info.md template and the master cover letter into applications/<name>/.
+set -e
+cd "$(dirname "$0")/.."
+name="$1"
+if [ -z "$name" ]; then
+  echo "usage: bin/new-application <institution-position-year>" >&2
+  exit 1
+fi
+dest="applications/$name"
+if [ -e "$dest" ]; then
+  echo "$dest already exists" >&2
+  exit 1
+fi
+mkdir -p "$dest/submitted"
+cp applications/_template/info.md "$dest/info.md"
+cp master/cover-letter/cover-letter.tex "$dest/cover-letter.tex"
+echo "Created $dest. Remember to add a row to tracker.csv (folder: $name)."

@@ -1,0 +1,49 @@
+% jobapp.sty: shared look for every application document.
+% Found from any folder because the dev container puts shared/ on TEXINPUTS.
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{jobapp}
+
+\RequirePackage[T1]{fontenc}
+\RequirePackage[utf8]{inputenc}
+\RequirePackage{lmodern}
+\RequirePackage{microtype}
+\RequirePackage[margin=1in]{geometry}
+\RequirePackage{amsmath,amssymb,amsthm}
+\RequirePackage{enumitem}
+\RequirePackage{titlesec}
+\RequirePackage{xcolor}
+\RequirePackage[colorlinks=true,urlcolor=blue!50!black,linkcolor=blue!50!black,citecolor=blue!50!black]{hyperref}
+
+% ── Personal details (edit once, used everywhere) ───────────────────────────
+\newcommand{\myname}{Joel Villatoro}
+\newcommand{\mytitle}{TODO: current position}
+\newcommand{\mydept}{TODO: Department of Mathematics}
+\newcommand{\myinstitution}{TODO: University}
+\newcommand{\myaddress}{TODO: street address, city, state ZIP}
+\newcommand{\myemail}{TODO@example.edu}
+\newcommand{\mywebsite}{TODO: website}
+
+% ── Header block used by statements and letters ─────────────────────────────
+\newcommand{\letterhead}{%
+  \begin{flushright}\small
+    \textbf{\myname}\\
+    \mydept, \myinstitution\\
+    \myaddress\\
+    \href{mailto:\myemail}{\myemail}
+  \end{flushright}}
+
+% Title line for statements: \statementtitle{Research Statement}
+\newcommand{\statementtitle}[1]{%
+  \begin{center}
+    {\Large\bfseries #1}\\[0.3em]
+    {\myname}
+  \end{center}\vspace{0.5em}}
+
+% Compact section headings
+\titleformat{\section}{\large\bfseries}{}{0pt}{}
+\titlespacing*{\section}{0pt}{1.2em}{0.5em}
+\setlist{nosep,leftmargin=*}
+
+% ── Your math macros go here ────────────────────────────────────────────────
+
+\endinput

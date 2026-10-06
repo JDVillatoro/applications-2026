@@ -1,0 +1,31 @@
+#!/usr/bin/env python3
+"""Print open applications from tracker.csv, sorted by deadline.
+
+    bin/deadlines          open applications (not submitted/closed)
+    bin/deadlines --all    every row
+"""
+import csv
+import sys
+from datetime import date
+from pathlib import Path
+
+DONE = {"submitted", "interview", "offer", "rejected", "withdrawn", "closed"}
+
+tracker = Path(__file__).resolve().parent.parent / "tracker.csv"
+with open(tracker, newline="") as f:
+    rows = list(csv.DictReader(f))
+
+show_all = "--all" in sys.argv
+if not show_all:
+    rows = [r for r in rows if r["status"].strip().lower() not in DONE]
+rows.sort(key=lambda r: r["deadline"] or "9999")
+
+today = date.today()
+for r in rows:
+    try:
+        days = (date.fromisoformat(r["deadline"]) - today).days
+        left = f"{days:>4}d"
+    except ValueError:
+        left = "   ?"
+    print(f"{r['deadline'] or '----------'}  {left}  {r['status']:<11} "
+          f"{r['institution']} ({r['position']})")

@@ -1,0 +1,29 @@
+# Personal editor/container setup
+.devcontainer/
+.vscode/
+
+# LaTeX build leftovers (PDFs in submitted/ ARE tracked; see below)
+*.aux
+*.log
+*.out
+*.toc
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.dvi
+*.bbl
+*.blg
+*.bcf
+*.run.xml
+*.pdf
+!**/submitted/*.pdf
+
+# Confidential letters, if you ever get copies
+references/letters/
+
+# Windows / Google Drive metadata
+desktop.ini
+
+# Placeholders created by the Claude Code sandbox
+.claude/
+.mcp.json
