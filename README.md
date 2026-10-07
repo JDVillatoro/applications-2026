@@ -52,11 +52,14 @@ jobs whose feed deadline moved or whose posting disappeared.
 
 A daily Claude cloud routine ("Job listing monitor",
 https://claude.ai/code/routines/trig_016eGRQi7SHHiBPTcCjiT8xj) runs the same
-scan from the GitHub copy at 7am Eastern and sends a push notification listing
-new `review` ads with a suggested call, plus tracked-job changes. It only reads
-the repo. In a local session, "review new ads" reruns the scan, records the
-calls in `decisions.csv` (and `tracker.csv` for Apply), and pushes, so the next
-run doesn't report the same ads. Its cloud environment ("Default") must allow
+scan from the GitHub copy at 7am Eastern. It writes `search/reports/latest.md`
+(ads needing a call with suggested calls, tracked-job changes, deadlines in the
+next 30 days, bucket counts), plus a dated copy `search/reports/YYYY-MM-DD.md`
+when something is new, and pushes them to `main`. It commits nothing outside
+`search/reports/`. `git pull` to read them; pull before pushing your own
+changes. In a session, "review new ads" records your calls in
+`decisions.csv` (and `tracker.csv` for Apply) and pushes, so the next run
+doesn't report the same ads. Its cloud environment ("Default") must allow
 mathjobs.org and academicjobsonline.org.
 
 ## Building

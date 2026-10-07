@@ -4,6 +4,7 @@
     bin/jobscan                 fetch feeds, write search/scan.csv, print summary
     bin/jobscan --offline       reuse today's cached feeds in search/raw/
     bin/jobscan --show BUCKET   also list the ads in BUCKET (e.g. review, keep)
+    bin/jobscan --report FILE   also write a Markdown report (path relative to repo)
 
 Every ad ends up in exactly one bucket with a reason; nothing is dropped.
 Mechanical buckets (decided here, from structured feed fields):
@@ -141,6 +142,7 @@ def check_tracker(by_url):
 def main():
     offline = "--offline" in sys.argv
     show = sys.argv[sys.argv.index("--show") + 1] if "--show" in sys.argv else None
+    report = sys.argv[sys.argv.index("--report") + 1] if "--report" in sys.argv else None
     today = date.today()
 
     decisions = {}
@@ -204,6 +206,62 @@ def main():
                 print(f"{r['key']:<16}{r['deadline']:<11}{r['institution'][:40]:<41}"
                       f"{r['position'][:55]:<56}{r['place'][:25]:<26}{r['salary_hint'][:30]}"
                       f"{'  [ELITE]' if r['elite_flag'] else ''}  {r['reason']}")
+    if report:
+        write_report(ROOT / report, rows, counts, tracker_changes, today)
+        print(f"\nreport -> {report}")
+
+
+def md(s):
+    return (s or "").replace("|", "/").replace("\n", " ").strip()
+
+
+def write_report(path, rows, counts, tracker_changes, today):
+    """Markdown report: ads needing a call, tracker changes, upcoming deadlines."""
+    review = [r for r in rows if r["bucket"] == "review"]
+    out = [f"# Job scan report, {today.isoformat()}", ""]
+    out += [f"{len(review)} ad(s) need a call; {len(tracker_changes)} tracked job(s) changed.",
+            "Suggested calls are filled in by the cloud monitor; record your calls by",
+            "telling Claude in a session (\"review new ads\").", ""]
+
+    out += ["## Ads needing a call", ""]
+    if review:
+        out += ["| Key | Institution | Position | Place | Deadline | Pay (from ad) | Suggested | Reason |",
+                "| --- | --- | --- | --- | --- | --- | --- | --- |"]
+        for r in review:
+            elite = " (elite list)" if r["elite_flag"] else ""
+            out.append(f"| {r['key']} | [{md(r['institution'])}]({r['url']}){elite} | "
+                       f"{md(r['position'])} | {md(r['place'])} | {r['deadline']} | "
+                       f"{md(r['salary_hint']) or '—'} | — | — |")
+    else:
+        out.append("None.")
+    out.append("")
+
+    out += ["## Tracked job changes", ""]
+    out += [f"- {line.strip()}" for line in tracker_changes] or ["None."]
+    out.append("")
+
+    out += ["## Tracker deadlines in the next 30 days", ""]
+    soon = []
+    with open(ROOT / "tracker.csv", newline="") as f:
+        for t in csv.DictReader(f):
+            d = real_date(t["deadline"])
+            if d and 0 <= (d - today).days <= 30 and t["status"] in ("interested", "preparing"):
+                soon.append((d, t))
+    if soon:
+        out += ["| Deadline | Days | Institution | Position | Status |", "| --- | --- | --- | --- | --- |"]
+        for d, t in sorted(soon, key=lambda x: x[0]):
+            out.append(f"| {d} | {(d - today).days} | {md(t['institution'])} | "
+                       f"{md(t['position'])} | {t['status']} |")
+    else:
+        out.append("None.")
+    out.append("")
+
+    out += ["## Bucket counts", "", "| Bucket | Ads |", "| --- | --- |"]
+    out += [f"| {b} | {n} |" for b, n in sorted(counts.items())]
+    out += [f"| total | {sum(counts.values())} |", ""]
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(out))
 
 
 if __name__ == "__main__":
