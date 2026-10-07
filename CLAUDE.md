@@ -24,7 +24,8 @@ layout, tracker columns and workflow.
   Commit with
   `git -c user.name="Joel Villatoro" -c user.email=41701387+JDVillatoro@users.noreply.github.com`
   and push after changing `search/decisions.csv` or `tracker.csv`. Never commit
-  anything under `references/letters/`.
+  anything under `references/letters/` or `references/recommenders.md`
+  (letter writers stay local; both are gitignored).
 - Job screening: `bin/jobscan` + `search/decisions.csv` (see README "Finding
   jobs"). Every ad gets a bucket and a written reason; missing data never
   excludes an ad.

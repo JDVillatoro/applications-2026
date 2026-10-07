@@ -20,6 +20,8 @@
 
 # Confidential letters, if you ever get copies
 references/letters/
+# Letter writers and request status: kept local, never pushed
+references/recommenders.md
 
 # Windows / Google Drive metadata
 desktop.ini

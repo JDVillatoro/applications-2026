@@ -8,8 +8,9 @@
     bin/jobscan --ingest        only record "Your call" entries from
                                 search/reports/latest.md (no download)
 
-Every run first records "Your call" entries (apply/maybe/skip) found in
-search/reports/latest.md into decisions.csv; apply also adds a tracker row.
+Every run first records "Your call" entries (apply/maybe/skip, optionally
+followed by "; because ...") found in search/reports/latest.md into
+decisions.csv; apply also adds a tracker row.
 
 Every ad ends up in exactly one bucket with a reason; nothing is dropped.
 Mechanical buckets (decided here, from structured feed fields):
@@ -179,7 +180,10 @@ def ingest_calls(today):
             continue
         row = dict(zip(header, cells))
         PREVIOUS[row["Key"]] = row
-        call = row.get("Your call", "").lower().strip(" *_—-")
+        # "skip" or "skip; because QIS record required": the reason is optional
+        call = row.get("Your call", "").strip(" *_—-")
+        m = re.match(r"(\w+)\b[\s;:,.-]*(?:because\b\s*)?(.*)", call)
+        call, why = (m.group(1).lower(), m.group(2).strip()) if m else (call, "")
         if not call:
             continue
         key = row["Key"]
@@ -191,7 +195,7 @@ def ingest_calls(today):
         inst, url = link_parts(row.get("Institution", ""))
         inst = inst.replace(" (elite list)", "")
         note = row.get("Reason", "").strip(" —")
-        reason = f"Joel: {call}" + (f"; suggested {row.get('Suggested', '')}: {note}" if note else "")
+        reason = f"Joel: {call}" + (f" because {why}" if why else "") + (f"; suggested {row.get('Suggested', '')}: {note}" if note else "")
         new_dec.append([key, CALLS[call], reason, today.isoformat()])
         if CALLS[call] == "keep":
             dl = row.get("Deadline", "")
@@ -299,7 +303,7 @@ def write_report(path, rows, counts, tracker_changes, today, recorded=(), proble
     review = [r for r in rows if r["bucket"] == "review"]
     out = [f"# Job scan report, {today.isoformat()}", ""]
     out += [f"{len(review)} ad(s) need a call; {len(tracker_changes)} tracked job(s) changed.",
-            "Type apply, maybe or skip in the \"Your call\" column, save, then run",
+            "Type apply, maybe or skip (optionally \"skip; because ...\") in the \"Your call\" column, save, then run",
             "`bin/jobscan --ingest` (or just commit and push: the next scan records it).",
             "Apply also adds the job to tracker.csv.", ""]
 

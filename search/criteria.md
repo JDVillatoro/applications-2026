@@ -27,6 +27,21 @@ Filters for screening ads. Add new rules here as they come up.
    institution's mission (Villanova, Notre Dame) is *not* a reason to exclude.
 5. Senior-only, chair and director positions.
 
+## Learning from Joel's calls
+
+Joel's calls are recorded in `decisions.csv` with reasons starting
+`Joel: <call>; suggested <S>: ...`. Rows where his call differs from the
+suggestion show where these rules are too loose or too strict. Before
+suggesting calls on new ads, read those rows and suggest the call he would
+likely make for a similar ad, giving the precedent in the reason (e.g.
+"like Utah State QIS, skipped 2026-10-07"). If a pattern holds across several
+calls, propose a rule for this file in the report; only Joel adds rules here.
+
+Patterns so far:
+- Interdisciplinary searches whose main requirement is a record in another
+  field (quantum information science) are Skip even when the ad mentions a
+  nearby topic (Utah State, 2026-10-07).
+
 ## Sources
 
 - MathJobs public JSON feed:

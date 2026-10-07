@@ -9,7 +9,7 @@
 | `shared/jobapp.sty` | Shared look and your personal details (name, email...) for every document. |
 | `applications/<institution-position-year>/` | Only for jobs where something is tailored. |
 | `applications/_template/` | What `bin/new-application` copies. |
-| `references/recommenders.md` | Letter writers and which jobs each was asked for. |
+| `references/recommenders.md` | Letter writers and which jobs each was asked for. Local only (gitignored). |
 | `search/` | Job search: `criteria.md`, `research-profile.md`, screening `decisions.csv`, `deep-dive.md` notes, latest `scan.csv`. |
 | `bin/` | Small helper scripts (below). |
 
@@ -63,7 +63,14 @@ To decide on new ads: type `apply`, `maybe` or `skip` in the report's "Your
 call" column, then run `bin/jobscan --ingest` to record them in
 `decisions.csv` (apply also adds a `tracker.csv` row), and commit and push.
 If you just commit and push the edited report, the next morning's scan records
-the calls instead. Recorded ads drop out of the report. Its cloud environment ("Default") must allow
+the calls instead. Recorded ads drop out of the report. The routine then
+responds to the calls: for each `apply` it fills that tracker row's `letters`,
+`documents` and `notes` from the ad (as for the first shortlist), and it reads
+your past calls (`decisions.csv`, "Learning from Joel's calls" in
+`search/criteria.md`) so that new suggestions follow your precedents. When your
+call differs from the suggestion, a short `; because ...` after the call
+(e.g. `skip; because QIS record required`) is kept in `decisions.csv` and
+helps it learn. Its cloud environment ("Default") must allow
 mathjobs.org and academicjobsonline.org.
 
 ## Building
@@ -78,4 +85,5 @@ Generated PDFs aren't committed, except those in `submitted/` folders.
 Private GitHub repository (pushed so the cloud routine can read it). Commit
 after each submission so the history records what went out when, and push
 after changing `decisions.csv` or `tracker.csv` so the routine sees them.
-Confidential letters (`references/letters/`) are gitignored and never pushed.
+Confidential letters (`references/letters/`) and the letter-writer list
+(`references/recommenders.md`) are gitignored and never pushed.
