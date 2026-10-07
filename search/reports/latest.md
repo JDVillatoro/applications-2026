@@ -9,9 +9,9 @@ Apply also adds the job to tracker.csv.
 
 | Key | Institution | Position | Place | Deadline | Pay (from ad) | Suggested | Reason | Your call |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| mathjobs:29159 | [Montana State University](https://www.mathjobs.org/jobs/list/29159) | Assistant Professor of Mathematics | Bozeman, Montana, US | 2026-11-02 | — | Skip | Restricted to computational/applied math (bio, optimization, data science). |  |
-| mathjobs:29157 | [Montana State University](https://www.mathjobs.org/jobs/list/29157) | Assistant Professor of Statistics | Bozeman, Montana, US | 2026-11-02 | — | Skip | Restricted to statistics. |  |
-| mathjobs:29077 | [Utah State University](https://www.mathjobs.org/jobs/list/29077) | Assistant Professor in the Mathematical Foundations of Quantum Information Science | Logan, Utah, US | 2026-11-23 | — | Maybe | Quantum information science interface; mentions algebraic/geometric quantization, which is near Poisson geometry, but requires an excellent record at the QIS interface (a stretch). Pay not stated. |  |
+| mathjobs:29159 | [Montana State University](https://www.mathjobs.org/jobs/list/29159) | Assistant Professor of Mathematics | Bozeman, Montana, US | 2026-11-02 | — | Skip | Restricted to computational/applied math (bio, optimization, data science). | Skip |
+| mathjobs:29157 | [Montana State University](https://www.mathjobs.org/jobs/list/29157) | Assistant Professor of Statistics | Bozeman, Montana, US | 2026-11-02 | — | Skip | Restricted to statistics. | Skip |
+| mathjobs:29077 | [Utah State University](https://www.mathjobs.org/jobs/list/29077) | Assistant Professor in the Mathematical Foundations of Quantum Information Science | Logan, Utah, US | 2026-11-23 | — | Maybe | Quantum information science interface; mentions algebraic/geometric quantization, which is near Poisson geometry, but requires an excellent record at the QIS interface (a stretch). Pay not stated. | Skip |
 
 ## Tracked job changes
 
