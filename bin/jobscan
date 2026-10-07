@@ -5,6 +5,11 @@
     bin/jobscan --offline       reuse today's cached feeds in search/raw/
     bin/jobscan --show BUCKET   also list the ads in BUCKET (e.g. review, keep)
     bin/jobscan --report FILE   also write a Markdown report (path relative to repo)
+    bin/jobscan --ingest        only record "Your call" entries from
+                                search/reports/latest.md (no download)
+
+Every run first records "Your call" entries (apply/maybe/skip) found in
+search/reports/latest.md into decisions.csv; apply also adds a tracker row.
 
 Every ad ends up in exactly one bucket with a reason; nothing is dropped.
 Mechanical buckets (decided here, from structured feed fields):
@@ -139,11 +144,85 @@ def check_tracker(by_url):
     return out
 
 
+REPORT_LATEST = SEARCH / "reports" / "latest.md"
+CALLS = {"apply": "keep", "keep": "keep", "maybe": "maybe", "skip": "skip"}
+PREVIOUS = {}   # key -> row of the previous report's table, to carry suggestions over
+
+
+def link_parts(cell):
+    m = re.match(r"\s*\[(.*?)\]\((.*?)\)", cell)
+    return (m.group(1), m.group(2)) if m else (cell.strip(), "")
+
+
+def ingest_calls(today):
+    """Record 'Your call' entries from the latest report into decisions.csv
+    (and tracker.csv for apply). Returns (recorded, problems)."""
+    if not REPORT_LATEST.exists():
+        return [], []
+    lines = REPORT_LATEST.read_text().splitlines()
+    header = None
+    known = set()
+    if DECISIONS.exists():
+        with open(DECISIONS, newline="") as f:
+            known = {r["key"] for r in csv.DictReader(f)}
+    recorded, problems, new_dec, new_track = [], [], [], []
+    PREVIOUS.clear()
+    for line in lines:
+        if not line.startswith("|"):
+            header = None if not line.strip() else header
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if "Key" in cells and "Suggested" in cells:
+            header = cells
+            continue
+        if header is None or set(cells[0]) <= set("-: "):
+            continue
+        row = dict(zip(header, cells))
+        PREVIOUS[row["Key"]] = row
+        call = row.get("Your call", "").lower().strip(" *_—-")
+        if not call:
+            continue
+        key = row["Key"]
+        if call not in CALLS:
+            problems.append(f"{key}: unknown call {row['Your call']!r} (use apply, maybe or skip)")
+            continue
+        if key in known:
+            continue
+        inst, url = link_parts(row.get("Institution", ""))
+        inst = inst.replace(" (elite list)", "")
+        note = row.get("Reason", "").strip(" —")
+        reason = f"Joel: {call}" + (f"; suggested {row.get('Suggested', '')}: {note}" if note else "")
+        new_dec.append([key, CALLS[call], reason, today.isoformat()])
+        if CALLS[call] == "keep":
+            dl = row.get("Deadline", "")
+            new_track.append([inst, row.get("Position", ""), dl if real_date(dl) else "",
+                              "interested", "MathJobs" if key.startswith("mathjobs") else "AJO",
+                              url, "", "", "", "" if real_date(dl) else "open until filled"])
+        known.add(key)
+        recorded.append(f"{key} {inst}: {call}")
+    if new_dec:
+        with open(DECISIONS, "a", newline="") as f:
+            csv.writer(f, lineterminator="\n").writerows(new_dec)
+    if new_track:
+        with open(ROOT / "tracker.csv", "a", newline="") as f:
+            csv.writer(f, lineterminator="\n").writerows(new_track)
+    return recorded, problems
+
+
 def main():
+    today = date.today()
+    recorded, problems = ingest_calls(today)
+    for r in recorded:
+        print(f"recorded your call: {r}")
+    for p in problems:
+        print(f"WARNING: {p}")
+    if "--ingest" in sys.argv:
+        if not recorded and not problems:
+            print("no new calls in search/reports/latest.md")
+        return
     offline = "--offline" in sys.argv
     show = sys.argv[sys.argv.index("--show") + 1] if "--show" in sys.argv else None
     report = sys.argv[sys.argv.index("--report") + 1] if "--report" in sys.argv else None
-    today = date.today()
 
     decisions = {}
     if DECISIONS.exists():
@@ -207,7 +286,7 @@ def main():
                       f"{r['position'][:55]:<56}{r['place'][:25]:<26}{r['salary_hint'][:30]}"
                       f"{'  [ELITE]' if r['elite_flag'] else ''}  {r['reason']}")
     if report:
-        write_report(ROOT / report, rows, counts, tracker_changes, today)
+        write_report(ROOT / report, rows, counts, tracker_changes, today, recorded, problems)
         print(f"\nreport -> {report}")
 
 
@@ -215,23 +294,32 @@ def md(s):
     return (s or "").replace("|", "/").replace("\n", " ").strip()
 
 
-def write_report(path, rows, counts, tracker_changes, today):
+def write_report(path, rows, counts, tracker_changes, today, recorded=(), problems=()):
     """Markdown report: ads needing a call, tracker changes, upcoming deadlines."""
     review = [r for r in rows if r["bucket"] == "review"]
     out = [f"# Job scan report, {today.isoformat()}", ""]
     out += [f"{len(review)} ad(s) need a call; {len(tracker_changes)} tracked job(s) changed.",
-            "Suggested calls are filled in by the cloud monitor; record your calls by",
-            "telling Claude in a session (\"review new ads\").", ""]
+            "Type apply, maybe or skip in the \"Your call\" column, save, then run",
+            "`bin/jobscan --ingest` (or just commit and push: the next scan records it).",
+            "Apply also adds the job to tracker.csv.", ""]
+
+    if recorded or problems:
+        out += ["## Your calls recorded this run", ""]
+        out += [f"- {r}" for r in recorded]
+        out += [f"- **Not recorded:** {p}" for p in problems]
+        out.append("")
 
     out += ["## Ads needing a call", ""]
     if review:
-        out += ["| Key | Institution | Position | Place | Deadline | Pay (from ad) | Suggested | Reason |",
-                "| --- | --- | --- | --- | --- | --- | --- | --- |"]
+        out += ["| Key | Institution | Position | Place | Deadline | Pay (from ad) | Suggested | Reason | Your call |",
+                "| --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
         for r in review:
             elite = " (elite list)" if r["elite_flag"] else ""
+            prev = PREVIOUS.get(r["key"], {})
+            pay = prev.get("Pay (from ad)") or md(r["salary_hint"]) or "—"
             out.append(f"| {r['key']} | [{md(r['institution'])}]({r['url']}){elite} | "
                        f"{md(r['position'])} | {md(r['place'])} | {r['deadline']} | "
-                       f"{md(r['salary_hint']) or '—'} | — | — |")
+                       f"{pay} | {prev.get('Suggested') or '—'} | {prev.get('Reason') or '—'} |  |")
     else:
         out.append("None.")
     out.append("")

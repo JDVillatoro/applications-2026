@@ -56,10 +56,14 @@ scan from the GitHub copy at 7am Eastern. It writes `search/reports/latest.md`
 (ads needing a call with suggested calls, tracked-job changes, deadlines in the
 next 30 days, bucket counts), plus a dated copy `search/reports/YYYY-MM-DD.md`
 when something is new, and pushes them to `main`. It commits nothing outside
-`search/reports/`. `git pull` to read them; pull before pushing your own
-changes. In a session, "review new ads" records your calls in
-`decisions.csv` (and `tracker.csv` for Apply) and pushes, so the next run
-doesn't report the same ads. Its cloud environment ("Default") must allow
+`search/reports/` (and `decisions.csv`/`tracker.csv` when it records your
+calls). `git pull` to read them; pull before pushing your own changes.
+
+To decide on new ads: type `apply`, `maybe` or `skip` in the report's "Your
+call" column, then run `bin/jobscan --ingest` to record them in
+`decisions.csv` (apply also adds a `tracker.csv` row), and commit and push.
+If you just commit and push the edited report, the next morning's scan records
+the calls instead. Recorded ads drop out of the report. Its cloud environment ("Default") must allow
 mathjobs.org and academicjobsonline.org.
 
 ## Building
