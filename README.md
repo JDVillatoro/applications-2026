@@ -45,8 +45,9 @@ they sort correctly.
 
 `bin/jobscan` downloads the MathJobs and AcademicJobsOnline feeds and puts
 every ad in one bucket with a reason (`search/scan.csv`). Mechanical filters
-(country, tenure-track, expired, not math) run in the script; judgement calls
-(field, elite, pay) are recorded per ad in `search/decisions.csv`. Ads with no
+(country, tenure-track or career teaching track, expired, not math) run in the
+script; judgement calls (field, elite, pay) are recorded per ad in
+`search/decisions.csv`. Ads with no
 decision land in `review`: `bin/jobscan --show review`. It also lists tracked
 jobs whose feed deadline moved or whose posting disappeared.
 

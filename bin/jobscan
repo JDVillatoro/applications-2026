@@ -21,7 +21,8 @@
 Every ad ends up in exactly one bucket with a reason; nothing is dropped.
 Mechanical buckets (decided here, from structured feed fields):
     out-country    not US/Canada
-    out-type       not a tenure-track position (by the feed's type field)
+    out-type       not a tenure-track position (by the feed's type field),
+                   unless the ad is a career teaching-track post (then review)
     out-not-math   AJO ad with no mention of mathematics anywhere
     past-deadline  stated deadline has passed (many still accept applications)
     duplicate      same institution and title already seen on MathJobs
@@ -98,6 +99,33 @@ def mentions_tenure_track(blob):
     return bool(re.search(r"(?<!non-)(?<!non )tenure[- ]track", blob, re.I))
 
 
+# Career teaching-track posts (teaching professor, professor of practice,
+# teaching stream, promotable lecturer...): not tenure-track, but Joel considers
+# them (CMU, 2026-10-08), so they go to review instead of out-type.
+TEACHING_TITLE = re.compile(
+    r"teaching (?:assistant |associate )?professor|professor\W+teaching|"
+    r"professor (?:of )?(?:the )?practice|of instruction|"
+    r"instructional (?:assistant |associate )?professor|teaching[- ](?:track|stream|faculty)|"
+    r"college track|clinical (?:assistant |associate )?(?:professor|faculty)|\bLEO lecturer", re.I)
+CAREER_WORDING = re.compile(
+    r"career[- ](?:track|positions?|appointments?|faculty|ladder)|"
+    r"(?<!non-)(?<!non )permanent(?! resident)|continuing (?:appointment|position|status|contract)|"
+    r"teaching[- ](?:track|stream)|security of employment|multi-?year (?:appointment|contract|term)|"
+    r"(?:eligible|eligibility) for (?:promotion|reappointment)|promotable|"
+    r"promotion (?:to|through|ladder|track|opportunit)|renewable\b.{0,80}\bpromotion|"
+    r"promotion\b.{0,80}\brenewable", re.I)
+NOT_CAREER_TITLE = re.compile(
+    r"visiting|post-?doc|adjunct|part[- ]time|\bPT\b|stipend|temporary|contingent|"
+    r"lecture pool|research (?:assistant |associate )?professor|fellow|member|intern|"
+    r"director|chair|senior|analyst|trader|quantitative research", re.I)
+
+
+def career_teaching_track(name, blob):
+    if NOT_CAREER_TITLE.search(name or "") or re.search(r"non-?renewable", blob, re.I):
+        return False
+    return bool(TEACHING_TITLE.search(name or "") or CAREER_WORDING.search(blob))
+
+
 def salary_hint(ad):
     amounts = re.findall(r"\$\s?\d[\d,]*(?:\.\d+)?\s?[kK]?", ad["salary"] + " " + ad["_text"])
     return " ".join(dict.fromkeys(a.replace(" ", "") for a in amounts))[:80]
@@ -112,9 +140,12 @@ def classify(ad, src, today, seen):
     if ad["country"] not in COUNTRIES:
         return "out-country", ad["country"] or "no country"
     t = ad["type"]
+    note = ""
     if t not in TT_TYPES:
         if t in AMBIGUOUS_TYPES and mentions_tenure_track(blob):
             pass
+        elif t in AMBIGUOUS_TYPES and career_teaching_track(ad["name"], blob):
+            note = "teaching track"
         else:
             return "out-type", f"type={t}"
     if src == "ajo":
@@ -129,7 +160,7 @@ def classify(ad, src, today, seen):
     dl = real_date(ad["deadline_raw"])
     if dl and dl < today:
         return "past-deadline", f"deadline {dl}"
-    return None, ""
+    return None, note
 
 
 def check_tracker(by_url):
@@ -318,8 +349,9 @@ def write_new_report(rows, today, recorded, problems):
             "| --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
     for r in new:
         elite = " (elite list)" if r["elite_flag"] else ""
+        track = " (teaching track, not tenure-track)" if r["reason"] == "teaching track" else ""
         out.append(f"| {r['key']} | [{md(r['institution'])}]({r['url']}){elite} | "
-                   f"{md(r['position'])} | {md(r['place'])} | {r['deadline']} | "
+                   f"{md(r['position'])}{track} | {md(r['place'])} | {r['deadline']} | "
                    f"{md(r['salary_hint']) or '—'} | — | — |  |")
     path.write_text("\n".join(out) + "\n")
     return path
@@ -395,7 +427,7 @@ def scan(decisions, today, offline):
             bucket, reason = classify(ad, src, today, seen)
             if bucket is None:
                 d = decisions.get(key)
-                bucket, reason = (d["bucket"], d["reason"]) if d else ("review", "")
+                bucket, reason = (d["bucket"], d["reason"]) if d else ("review", reason)
             elite = next((e for e in ELITE if e.lower() in (ad["univ"] or "").lower()), "")
             rows.append({
                 "key": key, "bucket": bucket, "reason": reason,

@@ -9,6 +9,12 @@ Filters for screening ads. Add new rules here as they come up.
 - USA and Canada.
 - R1 universities through liberal arts colleges, including teaching-focused
   institutions (tenure-track teaching specialist roles count).
+- Career teaching-track posts that aren't tenure-track (teaching professor,
+  professor of practice, teaching stream, promotable lecturer): long-term,
+  renewable, with a promotion ladder. Joel considers them, especially with a
+  research or undergraduate-research component (CMU, apply, 2026-10-08). The
+  same exclusions apply. Visiting, one-year, postdoc, adjunct and part-time
+  posts stay out. `bin/jobscan` sends them to review, marked "teaching track".
 
 ## Exclude
 
