@@ -117,11 +117,14 @@ CAREER_WORDING = re.compile(
 NOT_CAREER_TITLE = re.compile(
     r"visiting|post-?doc|adjunct|part[- ]time|\bPT\b|stipend|temporary|contingent|"
     r"lecture pool|research (?:assistant |associate )?professor|fellow|member|intern|"
-    r"director|chair|senior|analyst|trader|quantitative research", re.I)
+    r"director|chair|analyst|trader|quantitative research", re.I)
+# "Senior" alone is senior-only; "open rank" or "Lecturer or Senior Lecturer" is not.
+SENIOR_ONLY = re.compile(r"^(?!.*(?:open rank|\bor senior)).*\bsenior\b", re.I)
 
 
 def career_teaching_track(name, blob):
-    if NOT_CAREER_TITLE.search(name or "") or re.search(r"non-?renewable", blob, re.I):
+    if (NOT_CAREER_TITLE.search(name or "") or SENIOR_ONLY.search(name or "")
+            or re.search(r"non-?renewable", blob, re.I)):
         return False
     return bool(TEACHING_TITLE.search(name or "") or CAREER_WORDING.search(blob))
 

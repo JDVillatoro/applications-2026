@@ -23,7 +23,9 @@ Filters for screening ads. Add new rules here as they come up.
 2. **Hyper-elite institutions**: Harvard, MIT, Princeton, Stanford, Caltech,
    Berkeley, Chicago, Columbia, Yale, NYU (Courant). Other highly competitive
    places (e.g. Michigan, JHU, Rice, UT Austin, Williams) are kept but marked
-   as reaches. *Draft list: Joel to confirm.*
+   as reaches. *Draft list: Joel to confirm.* Applies to tenure-track posts
+   only: career teaching-track posts at these schools are considered (Joel,
+   2026-10-08).
 3. **Low pay**: stated starting salary below $80k, i.e. a range whose bottom
    is under $80k is excluded even if its top reaches it (confirmed by Joel
    2026-10-06). Ads that don't state pay are kept; note when the institution
