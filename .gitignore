@@ -33,3 +33,6 @@ desktop.ini
 # Raw job-feed downloads (bin/jobscan cache)
 search/raw/
 search/scan.csv
+
+# Python bytecode cache
+__pycache__/
