@@ -141,6 +141,9 @@ mentoring through teaching, research, and service".
 teaching at the undergraduate and graduate levels"; "a collegial and
 supportive environment for all students".
 
+**Brandeis** (11-01). Plain teaching statement; "a commitment to teaching". The
+load is three courses a year.
+
 **Mississippi State** (11-01). One combined "summary of research plans and
 teaching philosophy". Teaching undergraduate and graduate courses; leading
 M.S. students.
@@ -194,9 +197,6 @@ teaching statement. Teaching evaluations and/or observations are a separate
 document. Courses: calculus, linear algebra, introduction to proof, real
 analysis, and advanced topics building on analysis; new electives;
 undergraduate research; the Connections general-education program.
-
-**Brandeis** (11-01). Plain teaching statement; "a commitment to teaching". The
-load is three courses a year.
 
 **CMU** (11-15). "A statement describing teaching contributions and
 philosophy." Preference for "sustained demonstrated excellence in teaching",
