@@ -4,15 +4,19 @@
     bin/jobscan                 fetch feeds, write search/scan.csv, print summary
     bin/jobscan --offline       reuse today's cached feeds in search/raw/
     bin/jobscan --show BUCKET   also list the ads in BUCKET (e.g. review, keep)
-    bin/jobscan --report FILE   also write a Markdown report (path relative to repo)
-    bin/jobscan --ingest        only record "Your call" entries from
-                                search/reports/latest.md (no download);
-                                exits 1 if any entry was not understood.
-                                bin/calls wraps this and pushes.
-
-Every run first records "Your call" entries (apply/maybe/skip, optionally
-followed by "; because ...") found in search/reports/latest.md into
-decisions.csv; apply also adds a tracker row.
+    bin/jobscan --daily         the daily routine's run (only the routine uses it):
+        1. records "Your call" entries (apply/maybe/skip, optionally followed
+           by "; because ...") from every dated report in search/reports/
+           into decisions.csv; apply also adds a tracker.csv row;
+        2. scans the feeds;
+        3. moves each report whose ads all have a call into history.md and
+           deletes it (ads that vanished from the feeds count as done);
+        4. writes search/reports/<today>.md with review ads not already in a
+           waiting report (none if there are no new ones);
+        5. rewrites search/reports/status.md (last run, waiting reports, open
+           maybes, tracked-job changes, deadlines, bucket counts).
+    Without --daily nothing is recorded, so the routine is the only writer of
+    decisions.csv calls.
 
 Every ad ends up in exactly one bucket with a reason; nothing is dropped.
 Mechanical buckets (decided here, from structured feed fields):
@@ -147,9 +151,16 @@ def check_tracker(by_url):
     return out
 
 
-REPORT_LATEST = SEARCH / "reports" / "latest.md"
+REPORTS = SEARCH / "reports"
+HISTORY = REPORTS / "history.md"
+STATUS = REPORTS / "status.md"
+HISTORY_MARK = "<!-- archived reports below, newest first -->"
 CALLS = {"apply": "keep", "keep": "keep", "maybe": "maybe", "skip": "skip"}
-PREVIOUS = {}   # key -> row of the previous report's table, to carry suggestions over
+OUTCOME = {"keep": "tracker", "maybe": "maybe", "skip": "skip"}
+
+
+def md(s):
+    return (s or "").replace("|", "/").replace("\n", " ").strip()
 
 
 def link_parts(cell):
@@ -157,55 +168,75 @@ def link_parts(cell):
     return (m.group(1), m.group(2)) if m else (cell.strip(), "")
 
 
-def ingest_calls(today):
-    """Record 'Your call' entries from the latest report into decisions.csv
-    (and tracker.csv for apply). Returns (recorded, problems)."""
-    if not REPORT_LATEST.exists():
-        return [], []
-    lines = REPORT_LATEST.read_text().splitlines()
-    header = None
-    known = set()
-    if DECISIONS.exists():
-        with open(DECISIONS, newline="") as f:
-            known = {r["key"] for r in csv.DictReader(f)}
-    recorded, problems, new_dec, new_track = [], [], [], []
-    PREVIOUS.clear()
-    for line in lines:
+def report_files():
+    """Dated reports still waiting in search/reports/ (YYYY-MM-DD.md, YYYY-MM-DD-2.md)."""
+    return sorted(p for p in REPORTS.glob("*.md")
+                  if re.fullmatch(r"\d{4}-\d{2}-\d{2}(-\d+)?", p.stem))
+
+
+def read_tables(path):
+    """Rows (dicts) of every Markdown table in path that has a Key column."""
+    rows, header = [], None
+    for line in path.read_text().splitlines():
         if not line.startswith("|"):
-            header = None if not line.strip() else header
+            header = None
             continue
         cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        if "Key" in cells and "Suggested" in cells:
+        if header is None:
             header = cells
-            continue
-        if header is None or set(cells[0]) <= set("-: "):
-            continue
-        row = dict(zip(header, cells))
-        PREVIOUS[row["Key"]] = row
-        # "skip" or "skip; because QIS record required": the reason is optional
-        call = row.get("Your call", "").strip(" *_—-")
-        m = re.match(r"(\w+)\b[\s;:,.-]*(?:because\b\s*)?(.*)", call)
-        call, why = (m.group(1).lower(), m.group(2).strip()) if m else (call, "")
-        if not call:
-            continue
-        key = row["Key"]
-        if call not in CALLS:
-            problems.append(f"{key}: unknown call {row['Your call']!r} (use apply, maybe or skip)")
-            continue
-        if key in known:
-            continue
-        inst, url = link_parts(row.get("Institution", ""))
-        inst = inst.replace(" (elite list)", "")
-        note = row.get("Reason", "").strip(" —")
-        reason = f"Joel: {call}" + (f" because {why}" if why else "") + (f"; suggested {row.get('Suggested', '')}: {note}" if note else "")
-        new_dec.append([key, CALLS[call], reason, today.isoformat()])
-        if CALLS[call] == "keep":
-            dl = row.get("Deadline", "")
-            new_track.append([inst, row.get("Position", ""), dl if real_date(dl) else "",
-                              "interested", "MathJobs" if key.startswith("mathjobs") else "AJO",
-                              url, "", "", "", "" if real_date(dl) else "open until filled"])
-        known.add(key)
-        recorded.append(f"{key} {inst}: {call}")
+        elif "Key" in header and not set("".join(cells)) <= set("-: "):
+            rows.append(dict(zip(header, cells)))
+    return rows
+
+
+def parse_call(cell):
+    """'skip' or 'skip; because QIS record required' -> ('skip', 'QIS record required').
+    Empty -> (None, ''). Anything else -> (first word, rest); caller checks CALLS."""
+    cell = cell.strip(" *_—-")
+    m = re.match(r"(\w+)\b[\s;:,.-]*(?:because\b\s*)?(.*)", cell)
+    return (m.group(1).lower(), m.group(2).strip()) if m else (None, "")
+
+
+def load_decisions():
+    decisions = {}
+    if DECISIONS.exists():
+        with open(DECISIONS, newline="") as f:
+            for row in csv.DictReader(f):
+                if row["bucket"] not in JUDGEMENT_BUCKETS:
+                    sys.exit(f"decisions.csv: unknown bucket {row['bucket']!r} for {row['key']}")
+                decisions[row["key"]] = row
+    return decisions
+
+
+def record_calls(today, decisions):
+    """Record 'Your call' entries from every waiting report into decisions.csv
+    (and tracker.csv for apply). Updates decisions; returns (recorded, problems)."""
+    recorded, problems, new_dec, new_track = [], [], [], []
+    for path in report_files():
+        for row in read_tables(path):
+            key = row.get("Key", "")
+            call, why = parse_call(row.get("Your call", ""))
+            if not call or key in decisions:
+                continue
+            inst, url = link_parts(row.get("Institution", ""))
+            inst = inst.replace(" (elite list)", "")
+            label = f"{inst}, {row.get('Position', '')[:50]}"
+            if call not in CALLS:
+                problems.append(f"{path.name}, {label}: {row['Your call']!r} not understood "
+                                "(use apply, maybe or skip)")
+                continue
+            note = row.get("Reason", "").strip(" —")
+            reason = (f"Joel: {call}" + (f" because {why}" if why else "")
+                      + (f"; suggested {row.get('Suggested', '')}: {note}" if note else ""))
+            decisions[key] = {"key": key, "bucket": CALLS[call], "reason": reason,
+                              "decided": today.isoformat()}
+            new_dec.append([key, CALLS[call], reason, today.isoformat()])
+            if CALLS[call] == "keep":
+                dl = row.get("Deadline", "")
+                new_track.append([inst, row.get("Position", ""), dl if real_date(dl) else "",
+                                  "interested", "MathJobs" if key.startswith("mathjobs") else "AJO",
+                                  url, "", "", "", "" if real_date(dl) else "open until filled"])
+            recorded.append(f"{label}: {call} -> {OUTCOME[CALLS[call]]} ({path.name})")
     if new_dec:
         with open(DECISIONS, "a", newline="") as f:
             csv.writer(f, lineterminator="\n").writerows(new_dec)
@@ -215,117 +246,112 @@ def ingest_calls(today):
     return recorded, problems
 
 
-def main():
-    today = date.today()
-    recorded, problems = ingest_calls(today)
-    for r in recorded:
-        print(f"recorded your call: {r}")
-    for p in problems:
-        print(f"WARNING: {p}")
-    if "--ingest" in sys.argv:
-        if not recorded and not problems:
-            print("no new calls in search/reports/latest.md")
-        sys.exit(1 if problems else 0)
-    offline = "--offline" in sys.argv
-    show = sys.argv[sys.argv.index("--show") + 1] if "--show" in sys.argv else None
-    report = sys.argv[sys.argv.index("--report") + 1] if "--report" in sys.argv else None
+def joel_call(d):
+    """The call part of a decisions.csv reason: 'Joel: skip because X; suggested ...' -> 'skip because X'."""
+    if d["reason"].startswith("Joel: "):
+        return d["reason"][6:].split("; suggested ")[0]
+    return f"screened: {d['bucket']}"
 
-    decisions = {}
-    if DECISIONS.exists():
-        with open(DECISIONS, newline="") as f:
-            for row in csv.DictReader(f):
-                if row["bucket"] not in JUDGEMENT_BUCKETS:
-                    sys.exit(f"decisions.csv: unknown bucket {row['bucket']!r} for {row['key']}")
-                decisions[row["key"]] = row
 
-    rows, seen, total = [], {}, 0
-    for src in ("mathjobs", "ajo"):   # MathJobs first, so AJO copies are the duplicates
-        ads = load_feed(src, offline)
-        total += len(ads)
-        for ad in ads:
-            ad["_text"] = text(ad["description"]) + " " + text(ad["qualifications"])
-            ad["salary"] = ad["salary"] or ""
-            key = f"{src}:{ad['id']}"
-            bucket, reason = classify(ad, src, today, seen)
-            if bucket is None:
-                d = decisions.get(key)
-                bucket, reason = (d["bucket"], d["reason"]) if d else ("review", "")
-            elite = next((e for e in ELITE if e.lower() in (ad["univ"] or "").lower()), "")
-            rows.append({
-                "key": key, "bucket": bucket, "reason": reason,
-                "institution": ad["univ"], "position": ad["name"],
-                "place": ", ".join(x for x in (ad["city"], ad["state"], ad["country"]) if x),
-                "type": ad["type"] or "", "subject": ad["subject"] or "",
-                "deadline": str(real_date(ad["deadline_raw"]) or "none"),
-                "posted": ad["open_date_raw"] or "",
-                "salary": ad["salary"], "salary_hint": salary_hint(ad),
-                "elite_flag": elite, "url": ad["url"],
-            })
-
-    assert len(rows) == total, "every ad must be in exactly one row"
-    unused = set(decisions) - {r["key"] for r in rows}
-
-    rows.sort(key=lambda r: (r["bucket"], r["deadline"], r["institution"]))
-    with open(OUT, "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=list(rows[0]), lineterminator="\n")
-        w.writeheader()
-        w.writerows(rows)
-
-    counts = Counter(r["bucket"] for r in rows)
-    print(f"{total} ads -> {OUT.relative_to(ROOT)}")
-    for b, n in sorted(counts.items()):
-        print(f"  {b:<14}{n:>5}")
-    print(f"  {'total':<14}{sum(counts.values()):>5}")
-    if unused:
-        print(f"\n{len(unused)} decisions match no current ad (expired or removed): "
-              + ", ".join(sorted(unused)))
-    tracker_changes = check_tracker({r["url"]: r for r in rows})
-    if tracker_changes:
-        print(f"\n--- tracked jobs that changed ({len(tracker_changes)}) ---")
-        for line in tracker_changes:
-            print(line)
-    if show:
-        print(f"\n--- {show} ---")
+def archive_reports(today, decisions, open_keys):
+    """Move every waiting report whose ads all have a call (or whose uncalled ads
+    are gone from the feeds) into history.md, and delete it. open_keys: keys still
+    in `review`, or None if the scan failed (then only called ads count as done)."""
+    sections, archived = [], []
+    for path in report_files():
+        rows = read_tables(path)
+        if any(r["Key"] not in decisions and (open_keys is None or r["Key"] in open_keys)
+               for r in rows):
+            continue
+        table = ["| Key | Institution | Position | Deadline | Suggested | Your call | Outcome |",
+                 "| --- | --- | --- | --- | --- | --- | --- |"]
         for r in rows:
-            if r["bucket"] == show:
-                print(f"{r['key']:<16}{r['deadline']:<11}{r['institution'][:40]:<41}"
-                      f"{r['position'][:55]:<56}{r['place'][:25]:<26}{r['salary_hint'][:30]}"
-                      f"{'  [ELITE]' if r['elite_flag'] else ''}  {r['reason']}")
-    if report:
-        write_report(ROOT / report, rows, counts, tracker_changes, today, recorded, problems)
-        print(f"\nreport -> {report}")
+            d = decisions.get(r["Key"])
+            call = md(joel_call(d)) if d else "—"
+            outcome = OUTCOME.get(d["bucket"], d["bucket"]) if d else "no call; ad gone or expired"
+            table.append(f"| {r['Key']} | {r.get('Institution', '')} | {r.get('Position', '')} | "
+                         f"{r.get('Deadline', '')} | {r.get('Suggested', '')} | {call} | {outcome} |")
+        sections.append("\n".join([f"## {path.stem} (archived {today})", ""] + table + [""]))
+        archived.append(path.name)
+        path.unlink()
+
+    old = ""
+    if HISTORY.exists() and HISTORY_MARK in HISTORY.read_text():
+        old = HISTORY.read_text().split(HISTORY_MARK, 1)[1].strip("\n")
+    body = "\n".join(sections[::-1]) + ("\n" + old if old else "")
+    HISTORY.write_text("\n".join([
+        "# Job ad history", "",
+        "Ads from daily reports once every ad in the report had a call. Written by",
+        "`bin/jobscan --daily`; don't edit. To change a call, edit `search/decisions.csv`",
+        "(and `tracker.csv`), or ask Claude.", "",
+        HISTORY_MARK, "", body]).rstrip("\n") + "\n")
+    return archived
 
 
-def md(s):
-    return (s or "").replace("|", "/").replace("\n", " ").strip()
+def all_report_rows():
+    """Rows of history.md and of every waiting report."""
+    paths = ([HISTORY] if HISTORY.exists() else []) + report_files()
+    return [r for p in paths for r in read_tables(p)]
 
 
-def write_report(path, rows, counts, tracker_changes, today, recorded=(), problems=()):
-    """Markdown report: ads needing a call, tracker changes, upcoming deadlines."""
-    review = [r for r in rows if r["bucket"] == "review"]
-    out = [f"# Job scan report, {today.isoformat()}", ""]
-    out += [f"{len(review)} ad(s) need a call; {len(tracker_changes)} tracked job(s) changed.",
-            "Type apply, maybe or skip (optionally \"skip; because ...\") in the \"Your call\" column, save, then run",
-            "`bin/calls`: it records them (apply also adds a tracker.csv row), discards your edits to",
-            "this report and pushes. Don't commit this file; the daily scan rewrites it.", ""]
-
+def write_new_report(rows, today, recorded, problems):
+    """New dated report with the review ads not already in a waiting report.
+    Returns its path, or None if there are no new ads."""
+    waiting = {r["Key"] for p in report_files() for r in read_tables(p)}
+    new = [r for r in rows if r["bucket"] == "review" and r["key"] not in waiting]
+    if not new:
+        return None
+    path, n = REPORTS / f"{today}.md", 2
+    while path.exists():
+        path, n = REPORTS / f"{today}-{n}.md", n + 1
+    out = [f"# New job ads, {today}", "",
+           "Type apply, maybe or skip (optionally \"skip; because ...\") in the \"Your call\"",
+           "column, then commit and push. The next morning's scan records your calls; once",
+           "every ad here has one, this file moves into history.md. See status.md for",
+           "waiting reports, tracked-job changes and deadlines.", ""]
     if recorded or problems:
-        out += ["## Your calls recorded this run", ""]
-        out += [f"- {r}" for r in recorded]
-        out += [f"- **Not recorded:** {p}" for p in problems]
+        out += ["## Recorded since last run", ""]
+        out += [f"- {r}" for r in recorded] + [f"- **Not understood:** {p}" for p in problems]
         out.append("")
+    out += ["## Ads needing a call", "",
+            "| Key | Institution | Position | Place | Deadline | Pay (from ad) | Suggested | Reason | Your call |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
+    for r in new:
+        elite = " (elite list)" if r["elite_flag"] else ""
+        out.append(f"| {r['key']} | [{md(r['institution'])}]({r['url']}){elite} | "
+                   f"{md(r['position'])} | {md(r['place'])} | {r['deadline']} | "
+                   f"{md(r['salary_hint']) or '—'} | — | — |  |")
+    path.write_text("\n".join(out) + "\n")
+    return path
 
-    out += ["## Ads needing a call", ""]
-    if review:
-        out += ["| Key | Institution | Position | Place | Deadline | Pay (from ad) | Suggested | Reason | Your call |",
-                "| --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
-        for r in review:
-            elite = " (elite list)" if r["elite_flag"] else ""
-            prev = PREVIOUS.get(r["key"], {})
-            pay = prev.get("Pay (from ad)") or md(r["salary_hint"]) or "—"
-            out.append(f"| {r['key']} | [{md(r['institution'])}]({r['url']}){elite} | "
-                       f"{md(r['position'])} | {md(r['place'])} | {r['deadline']} | "
-                       f"{pay} | {prev.get('Suggested') or '—'} | {prev.get('Reason') or '—'} |  |")
+
+def write_status(today, counts, tracker_changes, recorded, problems, archived, new_report,
+                 decisions, failure=None):
+    out = [f"# Job search status, {today}", "",
+           "Rewritten by `bin/jobscan --daily` every morning; don't edit.", ""]
+    out += ["## Last run", ""]
+    if failure:
+        out.append(f"- **Scan failed:** {failure}")
+    out += [f"- Recorded: {r}" for r in recorded]
+    out += [f"- **Not understood:** {p}" for p in problems]
+    out += [f"- Archived to history.md: {a}" for a in archived]
+    out.append(f"- New report: {new_report.name}" if new_report else "- No new ads.")
+    out.append("")
+
+    out += ["## Reports waiting for your calls", ""]
+    waiting = []
+    for p in report_files():
+        rows = read_tables(p)
+        left = sum(1 for r in rows if r["Key"] not in decisions)
+        waiting.append(f"- [{p.name}]({p.name}): {left} of {len(rows)} ads still need a call")
+    out += waiting or ["None."]
+    out.append("")
+
+    maybes = [r for r in all_report_rows() if decisions.get(r["Key"], {}).get("bucket") == "maybe"]
+    out += ["## Open maybes", ""]
+    if maybes:
+        out += ["| Institution | Position | Deadline |", "| --- | --- | --- |"]
+        out += [f"| {r['Institution']} | {r['Position']} | {r['Deadline']} |" for r in maybes]
     else:
         out.append("None.")
     out.append("")
@@ -350,12 +376,102 @@ def write_report(path, rows, counts, tracker_changes, today, recorded=(), proble
         out.append("None.")
     out.append("")
 
-    out += ["## Bucket counts", "", "| Bucket | Ads |", "| --- | --- |"]
-    out += [f"| {b} | {n} |" for b, n in sorted(counts.items())]
-    out += [f"| total | {sum(counts.values())} |", ""]
+    if counts:
+        out += ["## Bucket counts", "", "| Bucket | Ads |", "| --- | --- |"]
+        out += [f"| {b} | {n} |" for b, n in sorted(counts.items())]
+        out += [f"| total | {sum(counts.values())} |", ""]
+    STATUS.write_text("\n".join(out))
 
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(out))
+
+def scan(decisions, today, offline):
+    rows, seen, total = [], {}, 0
+    for src in ("mathjobs", "ajo"):   # MathJobs first, so AJO copies are the duplicates
+        ads = load_feed(src, offline)
+        total += len(ads)
+        for ad in ads:
+            ad["_text"] = text(ad["description"]) + " " + text(ad["qualifications"])
+            ad["salary"] = ad["salary"] or ""
+            key = f"{src}:{ad['id']}"
+            bucket, reason = classify(ad, src, today, seen)
+            if bucket is None:
+                d = decisions.get(key)
+                bucket, reason = (d["bucket"], d["reason"]) if d else ("review", "")
+            elite = next((e for e in ELITE if e.lower() in (ad["univ"] or "").lower()), "")
+            rows.append({
+                "key": key, "bucket": bucket, "reason": reason,
+                "institution": ad["univ"], "position": ad["name"],
+                "place": ", ".join(x for x in (ad["city"], ad["state"], ad["country"]) if x),
+                "type": ad["type"] or "", "subject": ad["subject"] or "",
+                "deadline": str(real_date(ad["deadline_raw"]) or "none"),
+                "posted": ad["open_date_raw"] or "",
+                "salary": ad["salary"], "salary_hint": salary_hint(ad),
+                "elite_flag": elite, "url": ad["url"],
+            })
+    assert len(rows) == total, "every ad must be in exactly one row"
+    return rows
+
+
+def main():
+    today = date.today()
+    daily = "--daily" in sys.argv
+    offline = "--offline" in sys.argv
+    show = sys.argv[sys.argv.index("--show") + 1] if "--show" in sys.argv else None
+    decisions = load_decisions()
+
+    recorded, problems = record_calls(today, decisions) if daily else ([], [])
+    for r in recorded:
+        print(f"recorded: {r}")
+    for p in problems:
+        print(f"WARNING: not understood: {p}")
+
+    try:
+        rows = scan(decisions, today, offline)
+    except Exception as e:   # network or feed trouble
+        if not daily:
+            raise
+        failure = f"{type(e).__name__}: {e}"
+        print(f"SCAN FAILED: {failure}")
+        archived = archive_reports(today, decisions, None)
+        write_status(today, {}, [], recorded, problems, archived, None, decisions, failure)
+        sys.exit(1)
+
+    unused = set(decisions) - {r["key"] for r in rows}
+    rows.sort(key=lambda r: (r["bucket"], r["deadline"], r["institution"]))
+    with open(OUT, "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=list(rows[0]), lineterminator="\n")
+        w.writeheader()
+        w.writerows(rows)
+
+    counts = Counter(r["bucket"] for r in rows)
+    print(f"{len(rows)} ads -> {OUT.relative_to(ROOT)}")
+    for b, n in sorted(counts.items()):
+        print(f"  {b:<14}{n:>5}")
+    print(f"  {'total':<14}{sum(counts.values()):>5}")
+    if unused:
+        print(f"\n{len(unused)} decisions match no current ad (expired or removed): "
+              + ", ".join(sorted(unused)))
+    tracker_changes = check_tracker({r["url"]: r for r in rows})
+    if tracker_changes:
+        print(f"\n--- tracked jobs that changed ({len(tracker_changes)}) ---")
+        for line in tracker_changes:
+            print(line)
+    if show:
+        print(f"\n--- {show} ---")
+        for r in rows:
+            if r["bucket"] == show:
+                print(f"{r['key']:<16}{r['deadline']:<11}{r['institution'][:40]:<41}"
+                      f"{r['position'][:55]:<56}{r['place'][:25]:<26}{r['salary_hint'][:30]}"
+                      f"{'  [ELITE]' if r['elite_flag'] else ''}  {r['reason']}")
+    if daily:
+        open_keys = {r["key"] for r in rows if r["bucket"] == "review"}
+        archived = archive_reports(today, decisions, open_keys)
+        for a in archived:
+            print(f"archived: {a} -> history.md")
+        new_report = write_new_report(rows, today, recorded, problems)
+        print(f"new report: {new_report.relative_to(ROOT)}" if new_report else "no new ads")
+        write_status(today, counts, tracker_changes, recorded, problems, archived,
+                     new_report, decisions)
+        print(f"status -> {STATUS.relative_to(ROOT)}")
 
 
 if __name__ == "__main__":

@@ -23,9 +23,10 @@ layout, tracker columns and workflow.
 - Private GitHub remote (`origin`), read by the daily job-monitor cloud routine.
   Commit with
   `git -c user.name="Joel Villatoro" -c user.email=41701387+JDVillatoro@users.noreply.github.com`
-  and push after changing `search/decisions.csv` or `tracker.csv`
-  (`bin/calls` does this for report calls). Never commit `search/reports/`:
-  the routine owns it. Never commit
+  and push after changing `search/decisions.csv` or `tracker.csv`. Joel's
+  calls on new ads go in the dated reports in `search/reports/`; only the
+  routine (`bin/jobscan --daily`) records them, archives reports and writes
+  `status.md`/`history.md`. Don't run `--daily` locally. Never commit
   anything under `references/letters/` or `references/recommenders.md`
   (letter writers stay local; both are gitignored).
 - Job screening: `bin/jobscan` + `search/decisions.csv` (see README "Finding

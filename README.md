@@ -51,32 +51,38 @@ decision land in `review`: `bin/jobscan --show review`. It also lists tracked
 jobs whose feed deadline moved or whose posting disappeared.
 
 A daily Claude cloud routine ("Job listing monitor",
-https://claude.ai/code/routines/trig_016eGRQi7SHHiBPTcCjiT8xj) runs the same
-scan from the GitHub copy at 7am Eastern. It writes `search/reports/latest.md`
-(ads needing a call with suggested calls, tracked-job changes, deadlines in the
-next 30 days, bucket counts), plus a dated copy `search/reports/YYYY-MM-DD.md`
-when something is new, and pushes them to `main`. Besides
-`search/reports/` it only fills in new `tracker.csv` rows (below). `git pull`
-to read the reports; pull before pushing your own changes.
+https://claude.ai/code/routines/trig_016eGRQi7SHHiBPTcCjiT8xj) runs
+`bin/jobscan --daily` from the GitHub copy at 7am Eastern, adds its suggested
+calls, and pushes to `main`. In `search/reports/`:
 
-To decide on new ads: `git pull`, type `apply`, `maybe` or `skip` in the
-report's "Your call" column (optionally with a reason: `skip; because QIS
-record required`), save, and run `bin/calls`. It records the calls in
-`decisions.csv` (apply also adds a `tracker.csv` row), commits those two files,
-discards your edits to the report, then pulls with rebase and pushes. Don't
-commit `search/reports/` yourself: the routine owns it, so your commits never
-conflict with its daily one. Recorded ads drop out of the next report.
+| File | What it is |
+|---|---|
+| `YYYY-MM-DD.md` | New ads that day, with suggested calls. **Every dated file still here needs your calls.** |
+| `status.md` | Rewritten daily: last run (calls recorded, anything not understood), reports waiting, open maybes, tracked-job changes, deadlines in the next 30 days. |
+| `history.md` | Every ad from finished reports with its suggestion, your call and the outcome, newest first. |
 
-The routine responds to your calls the next morning: it fills the `letters`,
-`documents`, `portal` and `notes` of any tracker row where letters and
-documents are both empty (so you can also add a row by hand with just
-institution, position, deadline and link), and it reads your past calls
-(`decisions.csv`, "Learning from Joel's calls" in `search/criteria.md`) so
-that new suggestions follow your precedents. Reasons you give with a call
-help it most.
+To decide: `git pull`, type `apply`, `maybe` or `skip` in a report's "Your call"
+column (a reason helps the routine learn: `skip; because QIS record required`),
+then commit and push (`git pull --rebase` first if the push is refused). The
+next morning the routine records the calls (`decisions.csv`; apply also adds a
+`tracker.csv` row and fills its letters, documents, portal and notes from the
+ad), and once every ad in a report has a call it moves the report into
+`history.md` and deletes it. An ad that disappears from the feeds before you
+call it counts as done. Entries it can't read are listed in `status.md` and
+stay pending until fixed.
 
-The routine's cloud environment ("Default") must allow mathjobs.org and
-academicjobsonline.org.
+Who writes what, so pushes don't conflict: you edit only the dated reports
+(and `tracker.csv` as your applications progress); the routine creates dated
+reports, never edits one after that day, and is the only writer of
+`status.md`, `history.md` and the calls in `decisions.csv`. A call is final
+once recorded; to change one, edit `decisions.csv` and `tracker.csv` or ask
+Claude.
+
+The routine also reads your past calls ("Learning from Joel's calls" in
+`search/criteria.md`) so new suggestions follow your precedents. It fills any
+tracker row whose letters and documents are both empty, so you can also add a
+job by hand with just institution, position, deadline and link. Its cloud
+environment ("Default") must allow mathjobs.org and academicjobsonline.org.
 
 ## Building
 
