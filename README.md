@@ -55,23 +55,28 @@ https://claude.ai/code/routines/trig_016eGRQi7SHHiBPTcCjiT8xj) runs the same
 scan from the GitHub copy at 7am Eastern. It writes `search/reports/latest.md`
 (ads needing a call with suggested calls, tracked-job changes, deadlines in the
 next 30 days, bucket counts), plus a dated copy `search/reports/YYYY-MM-DD.md`
-when something is new, and pushes them to `main`. It commits nothing outside
-`search/reports/` (and `decisions.csv`/`tracker.csv` when it records your
-calls). `git pull` to read them; pull before pushing your own changes.
+when something is new, and pushes them to `main`. Besides
+`search/reports/` it only fills in new `tracker.csv` rows (below). `git pull`
+to read the reports; pull before pushing your own changes.
 
-To decide on new ads: type `apply`, `maybe` or `skip` in the report's "Your
-call" column, then run `bin/jobscan --ingest` to record them in
-`decisions.csv` (apply also adds a `tracker.csv` row), and commit and push.
-If you just commit and push the edited report, the next morning's scan records
-the calls instead. Recorded ads drop out of the report. The routine then
-responds to the calls: for each `apply` it fills that tracker row's `letters`,
-`documents` and `notes` from the ad (as for the first shortlist), and it reads
-your past calls (`decisions.csv`, "Learning from Joel's calls" in
-`search/criteria.md`) so that new suggestions follow your precedents. When your
-call differs from the suggestion, a short `; because ...` after the call
-(e.g. `skip; because QIS record required`) is kept in `decisions.csv` and
-helps it learn. Its cloud environment ("Default") must allow
-mathjobs.org and academicjobsonline.org.
+To decide on new ads: `git pull`, type `apply`, `maybe` or `skip` in the
+report's "Your call" column (optionally with a reason: `skip; because QIS
+record required`), save, and run `bin/calls`. It records the calls in
+`decisions.csv` (apply also adds a `tracker.csv` row), commits those two files,
+discards your edits to the report, then pulls with rebase and pushes. Don't
+commit `search/reports/` yourself: the routine owns it, so your commits never
+conflict with its daily one. Recorded ads drop out of the next report.
+
+The routine responds to your calls the next morning: it fills the `letters`,
+`documents`, `portal` and `notes` of any tracker row where letters and
+documents are both empty (so you can also add a row by hand with just
+institution, position, deadline and link), and it reads your past calls
+(`decisions.csv`, "Learning from Joel's calls" in `search/criteria.md`) so
+that new suggestions follow your precedents. Reasons you give with a call
+help it most.
+
+The routine's cloud environment ("Default") must allow mathjobs.org and
+academicjobsonline.org.
 
 ## Building
 

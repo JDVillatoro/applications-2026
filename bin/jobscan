@@ -6,7 +6,9 @@
     bin/jobscan --show BUCKET   also list the ads in BUCKET (e.g. review, keep)
     bin/jobscan --report FILE   also write a Markdown report (path relative to repo)
     bin/jobscan --ingest        only record "Your call" entries from
-                                search/reports/latest.md (no download)
+                                search/reports/latest.md (no download);
+                                exits 1 if any entry was not understood.
+                                bin/calls wraps this and pushes.
 
 Every run first records "Your call" entries (apply/maybe/skip, optionally
 followed by "; because ...") found in search/reports/latest.md into
@@ -223,7 +225,7 @@ def main():
     if "--ingest" in sys.argv:
         if not recorded and not problems:
             print("no new calls in search/reports/latest.md")
-        return
+        sys.exit(1 if problems else 0)
     offline = "--offline" in sys.argv
     show = sys.argv[sys.argv.index("--show") + 1] if "--show" in sys.argv else None
     report = sys.argv[sys.argv.index("--report") + 1] if "--report" in sys.argv else None
@@ -304,8 +306,8 @@ def write_report(path, rows, counts, tracker_changes, today, recorded=(), proble
     out = [f"# Job scan report, {today.isoformat()}", ""]
     out += [f"{len(review)} ad(s) need a call; {len(tracker_changes)} tracked job(s) changed.",
             "Type apply, maybe or skip (optionally \"skip; because ...\") in the \"Your call\" column, save, then run",
-            "`bin/jobscan --ingest` (or just commit and push: the next scan records it).",
-            "Apply also adds the job to tracker.csv.", ""]
+            "`bin/calls`: it records them (apply also adds a tracker.csv row), discards your edits to",
+            "this report and pushes. Don't commit this file; the daily scan rewrites it.", ""]
 
     if recorded or problems:
         out += ["## Your calls recorded this run", ""]
