@@ -22,6 +22,8 @@
 references/letters/
 # Letter writers and request status: kept local, never pushed
 references/recommenders.md
+# Student teaching evaluations (any folder named evaluations): kept local, never pushed
+evaluations/
 
 # Windows / Google Drive metadata
 desktop.ini

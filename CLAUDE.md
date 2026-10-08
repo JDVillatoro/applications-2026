@@ -27,8 +27,9 @@ layout, tracker columns and workflow.
   calls on new ads go in the dated reports in `search/reports/`; only the
   routine (`bin/jobscan --daily`) records them, archives reports and writes
   `status.md`/`history.md`. Don't run `--daily` locally. Never commit
-  anything under `references/letters/` or `references/recommenders.md`
-  (letter writers stay local; both are gitignored).
+  anything under `references/letters/`, `references/recommenders.md` or any
+  `evaluations/` folder (letter writers and teaching evaluations stay local;
+  all are gitignored).
 - Job screening: `bin/jobscan` + `search/decisions.csv` (see README "Finding
   jobs"). Every ad gets a bucket and a written reason; missing data never
   excludes an ad.
