@@ -6,6 +6,7 @@ Ads from daily reports once every ad in the report had a call. Written by
 
 <!-- archived reports below, newest first -->
 
+
 ## 2026-10-08 (archived 2026-10-09)
 
 | Key | Institution | Position | Deadline | Suggested | Your call | Outcome |
